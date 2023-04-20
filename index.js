@@ -9,8 +9,9 @@ import { HNSWLib } from "langchain/vectorstores/hnswlib";
 import { OpenAIEmbeddings } from "langchain/embeddings/openai";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 
-import { getAllCommits, getCommitsByAuthor, gitShow } from './util.js';
+import { getAllCommits, gitShow } from './util.js';
 import { iterate, parallelMapToQueue } from './gtor.js';
+import { loadAndProcessDocuments } from './documentProcessor.js';
 
 config();
 
@@ -55,22 +56,19 @@ const openAiConfiguration = {
 
 const model = new OpenAI(openAiParams, openAiConfiguration);
 const embeddings = new OpenAIEmbeddings(openAiParams, openAiConfiguration);
-// const chain = new LLMChain({ llm: model, prompt });
 
-console.log(`loading file "${targetDir}/package.json"`)
-const text = fs.readFileSync(`${targetDir}/package.json`, 'utf8');
-const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000 });
-const docs = await textSplitter.createDocuments([text]);
-
-// Create a vector store from the documents.
-const vectorStore = await HNSWLib.fromDocuments(docs, embeddings);
+const vectorStore = await loadAndProcessDocuments(targetDir, {
+  // recursive: true,
+  metadataText: 'application source code',
+  embeddings,
+})
 
 // Create a chain that uses the OpenAI LLM and HNSWLib vector store.
 const chain = RetrievalQAChain.fromLLM(model, vectorStore.asRetriever());
 
 console.log('call')
 const res = await chain.call({
-  query: "What is the most popular dependency use by this project? what is the least popular?",
+  query: "What is the general software architecture of this project?",
 });
 console.log({ res });
 
