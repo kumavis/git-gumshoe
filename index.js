@@ -1,11 +1,25 @@
+import fs from 'fs';
 import { config } from 'dotenv';
+
 import { LLMChain } from 'langchain/chains';
 import { OpenAI } from "langchain/llms/openai";
 import { PromptTemplate } from 'langchain/prompts';
+import { RetrievalQAChain } from "langchain/chains";
+import { HNSWLib } from "langchain/vectorstores/hnswlib";
+import { OpenAIEmbeddings } from "langchain/embeddings/openai";
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+
 import { getAllCommits, getCommitsByAuthor, gitShow } from './util.js';
 import { iterate, parallelMapToQueue } from './gtor.js';
 
 config();
+
+const [,,targetDir] = process.argv;
+if (!targetDir) {
+  throw new Error('Please provide a target directory as the first argument');
+}
+
+// POST https://{your-resource-name}.openai.azure.com/openai/deployments/{deployment-id}/embeddings?api-version={api-version}
 
 const template = `
 \`\`\`
@@ -22,10 +36,43 @@ const prompt = new PromptTemplate({
   template: template,
   inputVariables: ['gitCommitDescription'],
 });
-const model = new OpenAI({  });
-const chain = new LLMChain({ llm: model, prompt });
 
+const openAiParams = {
+  modelName: process.env.OPENAI_API_MODEL,
+  openAIApiKey: process.env.OPENAI_API_KEY,
+}
+const openAiConfiguration = {
+  basePath: process.env.OPENAI_API_BASE,
+  baseOptions: {
+    headers: {
+      'api-key': process.env.OPENAI_API_KEY,
+    },
+    params: {
+      'api-version': process.env.OPENAI_API_VERSION,
+    }
+  },
+}
 
+const model = new OpenAI(openAiParams, openAiConfiguration);
+const embeddings = new OpenAIEmbeddings(openAiParams, openAiConfiguration);
+// const chain = new LLMChain({ llm: model, prompt });
+
+console.log(`loading file "${targetDir}/package.json"`)
+const text = fs.readFileSync(`${targetDir}/package.json`, 'utf8');
+const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000 });
+const docs = await textSplitter.createDocuments([text]);
+
+// Create a vector store from the documents.
+const vectorStore = await HNSWLib.fromDocuments(docs, embeddings);
+
+// Create a chain that uses the OpenAI LLM and HNSWLib vector store.
+const chain = RetrievalQAChain.fromLLM(model, vectorStore.asRetriever());
+
+console.log('call')
+const res = await chain.call({
+  query: "What is the most popular dependency use by this project? what is the least popular?",
+});
+console.log({ res });
 
 async function main () {
   // const [,,authorEmail] = process.argv
@@ -145,4 +192,4 @@ function createTopResultsBucket (limit, valueGetter) {
 }
   
 
-main();
+// main();

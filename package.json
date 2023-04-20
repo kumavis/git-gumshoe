@@ -4,10 +4,16 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "postinstall": "patch-package",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "license": "MIT",
   "dependencies": {
-    "langchain": "^0.0.58"
+    "hnswlib-node": "^1.4.2",
+    "langchain": "^0.0.58",
+    "simple-git": "^3.17.0"
+  },
+  "devDependencies": {
+    "patch-package": "^6.5.1"
   }
 }
