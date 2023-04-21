@@ -76,7 +76,12 @@ async function runGit(args, allowedCommands, targetDirectory, maxOutputLength) {
   }
 
   return trackProcessUntilBufferIsFull(
-    spawn('git', args, { cwd: targetDirectory }),
+    spawn('git', args, {
+      cwd: targetDirectory,
+      // ignore stdin, pipe stdout and stderr
+      // this prevents run commands from expecting interactive input
+      stdio: ["ignore", "pipe", "pipe"],
+    }),
     maxOutputLength
   );
 }
