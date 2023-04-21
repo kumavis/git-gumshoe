@@ -14,8 +14,9 @@ to do:
 - azure support for embeddings / variable models
 - request caching
 - try out
-  - [ ] StuffDocumentsChain
+  - [x] loadSummarizationChain
+  - [x] ConversationalRetrievalQAChain
+  - [x] StuffDocumentsChain
   - [ ] MapReduceDocumentsChain
   - [ ] RefineDocumentsChain
-  - [ ] loadSummarizationChain
-  - [ ] ConversationalRetrievalQAChain
+- [ ] ignore

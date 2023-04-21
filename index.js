@@ -1,4 +1,5 @@
 import { config as loadEnvFile } from 'dotenv';
+import axios from 'axios';
 import { OpenAI } from "langchain/llms/openai";
 import { PromptTemplate } from 'langchain/prompts';
 import { RetrievalQAChain, loadSummarizationChain } from "langchain/chains";
@@ -7,15 +8,14 @@ import { initializeAgentExecutorWithOptions } from "langchain/agents";
 // import { SerpAPI } from "langchain/tools";
 import { Calculator } from "langchain/tools/calculator";
 import { VectorStoreQATool } from "langchain/tools";
+import { fixForAzure } from './azure-fix.js';
 import { setupAxiosDebugging } from './axios-debug.js';
 import { getAllCommits, gitShow } from './util.js';
 import { iterate, parallelMapToQueue } from './gtor.js';
 import { loadAndProcessDocuments, vectorStoreFromDocuments } from './documentProcessor.js';
 import { GitTool } from './git-tool.js';
 
-loadEnvFile();
-// setupAxiosDebugging();
-
+// parse command arguments
 const [,,targetDirectory, question] = process.argv;
 if (!targetDirectory) {
   throw new Error('Please provide a target directory as the first argument');
@@ -24,30 +24,24 @@ if (!question) {
   throw new Error('Please provide a question as the second argument');
 }
 
+// load configuration
+loadEnvFile();
+const apiKey = process.env.OPENAI_API_KEY;
+const apiBase = process.env.OPENAI_API_BASE;
+const apiType = process.env.OPENAI_API_TYPE;
+const apiVersion = process.env.OPENAI_API_VERSION;
 const openAiParams = {
-  modelName: process.env.OPENAI_API_MODEL,
-  openAIApiKey: process.env.OPENAI_API_KEY,
+  openAIApiKey: apiKey,
 }
 const openAiConfiguration = {
-  basePath: process.env.OPENAI_API_BASE,
-  baseOptions: {},
+  basePath: apiBase,
+}
+// workaround for azure
+if (apiType === 'azure') {
+  fixForAzure({ configuration: openAiConfiguration, axios, apiKey, apiVersion });
 }
 
-// workaround for azure
-if (process.env.OPENAI_API_TYPE === 'azure') {
-  const baseOptions = openAiConfiguration.baseOptions ?? {}
-  openAiConfiguration.baseOptions = {
-    ...baseOptions,
-    headers: {
-      ...baseOptions.headers ?? {},
-      'api-key': process.env.OPENAI_API_KEY,
-    },
-    params: {
-      ...baseOptions.params ?? {},
-      'api-version': process.env.OPENAI_API_VERSION,
-    }
-  }
-}
+setupAxiosDebugging(axios);
 
 const model = new OpenAI(openAiParams, openAiConfiguration);
 const embeddings = new OpenAIEmbeddings(openAiParams, openAiConfiguration);

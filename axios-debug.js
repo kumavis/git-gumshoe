@@ -1,11 +1,20 @@
-import axios from 'axios';
-
-export function setupAxiosDebugging () {
+export function setupAxiosDebugging (axios) {
 
   // Add a request interceptor
   axios.interceptors.request.use(function (config) {
-    const { data } = config;
-    console.log(`<--`, JSON.parse(data))
+    const { data: rawData } = config;
+    const data = JSON.parse(rawData)
+    const { model, input, ...rest } = data;
+    switch (model) {
+      case 'text-embedding-ada-002': {
+        console.log(`<--`, model, `(${input.length} documents)`, Reflect.ownKeys(rest).join(', '))
+        break;
+      }
+      default: {
+        console.log(`<--`, model, input.map(i => `${i.slice(0,100)}...`), Reflect.ownKeys(rest).join(', '))
+        break;
+      }
+    }
     // Do something before request is sent
     return config;
   }, function (error) {
@@ -23,6 +32,7 @@ export function setupAxiosDebugging () {
   }, function (error) {
     // Any status codes that falls outside the range of 2xx cause this function to trigger
     // Do something with response error
+    console.log(`--> (err)`, error.toJSON())
     return Promise.reject(error);
   });
 
