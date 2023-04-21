@@ -3,8 +3,10 @@ import { DynamicTool } from 'langchain/tools';
 
 const defaultAllowedCommands = [
   'log',
+  'shortlog',
   'show-ref',
   'status',
+  'grep',
 ]
 
 export class GitTool extends DynamicTool {
@@ -68,7 +70,7 @@ function parseCommandArgs(commandString) {
 
 async function runGit(args, allowedCommands, targetDirectory, maxOutputLength) {
   console.log('running git', args);
-  const [command] = args;
+  const command = args.find((arg) => !arg.startsWith('-'));
   if (!allowedCommands.includes(command)) {
     throw new Error(`Command ${command} is not allowed`);
   }

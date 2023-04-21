@@ -6,7 +6,7 @@ langchain improvements:
 - document loader should specify a splitter
 
 to explore:
-- agents / tools
+- [x] agents / tools
 - mvp: git commit history summarization
 - js ast splitting
 
