@@ -19,4 +19,4 @@ to do:
   - [x] StuffDocumentsChain
   - [ ] MapReduceDocumentsChain
   - [ ] RefineDocumentsChain
-- [ ] ignore
+- [ ] ignore via .gitignore
