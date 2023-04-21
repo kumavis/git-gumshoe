@@ -40,3 +40,10 @@ export async function vectorStoreFromDocuments(docs, { embeddings } = {}) {
 
   return vectorStore;
 }
+
+// how to deal with
+// llm size limit vs embedder size limit
+// model (with size limit) -> document (with splitter) -> fragments (with embedding)
+
+// doc collection @> document @> fragment
+// collection @> document @> embedding fragment -> embedding -(search)-> embedding fragment -> (range, document) -> completion fragment

@@ -1,18 +1,22 @@
-export function setupAxiosDebugging (axios) {
+export function setupAxiosDebugging (axios, maxVerbosity = false) {
 
   // Add a request interceptor
   axios.interceptors.request.use(function (config) {
     const { data: rawData } = config;
     const data = JSON.parse(rawData)
     const { model, input, ...rest } = data;
-    switch (model) {
-      case 'text-embedding-ada-002': {
-        console.log(`<--`, model, `(${input.length} documents)`, Reflect.ownKeys(rest).join(', '))
-        break;
-      }
-      default: {
-        console.log(`<--`, model, input, Reflect.ownKeys(rest).join(', '))
-        break;
+    if (maxVerbosity) {
+      console.log(`<--`, config)
+    } else {
+      switch (model) {
+        case 'text-embedding-ada-002': {
+          console.log(`<--`, model, `(${input.length} documents)`, Reflect.ownKeys(rest).join(', '))
+          break;
+        }
+        default: {
+          console.log(`<--`, model, input, Reflect.ownKeys(rest).join(', '))
+          break;
+        }
       }
     }
     // Do something before request is sent
