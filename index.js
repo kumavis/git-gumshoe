@@ -11,13 +11,17 @@ import { setupAxiosDebugging } from './axios-debug.js';
 import { getAllCommits, gitShow } from './util.js';
 import { iterate, parallelMapToQueue } from './gtor.js';
 import { loadAndProcessDocuments, vectorStoreFromDocuments } from './documentProcessor.js';
+import { GitTool } from './git-tool.js';
 
 loadEnvFile();
 // setupAxiosDebugging();
 
-const [,,targetDir] = process.argv;
-if (!targetDir) {
+const [,,targetDirectory, question] = process.argv;
+if (!targetDirectory) {
   throw new Error('Please provide a target directory as the first argument');
+}
+if (!question) {
+  throw new Error('Please provide a question as the second argument');
 }
 
 const openAiParams = {
@@ -48,13 +52,14 @@ if (process.env.OPENAI_API_TYPE === 'azure') {
 const model = new OpenAI(openAiParams, openAiConfiguration);
 const embeddings = new OpenAIEmbeddings(openAiParams, openAiConfiguration);
 
-const docs = await loadAndProcessDocuments(targetDir, {
+console.log("Loading docs...");
+const docs = await loadAndProcessDocuments(targetDirectory, {
   // recursive: true,
   metadataText: 'application source code',
   embeddings,
 })
 const vectorStore = await vectorStoreFromDocuments(docs, { embeddings });
-const vectorStoreToolName = 'knowledge base';
+const vectorStoreToolName = 'code lookup';
 const vectorStoreToolDescription = 'git repo source code';
 const vectorStoreTool = new VectorStoreQATool(
   vectorStoreToolName,
@@ -67,18 +72,15 @@ const vectorStoreTool = new VectorStoreQATool(
 const tools = [
   new Calculator(),
   vectorStoreTool,
+  new GitTool({ targetDirectory }),
 ];
 
 const executor = await initializeAgentExecutorWithOptions(tools, model, {
   agentType: "zero-shot-react-description",
   verbose: true,
 });
+
 console.log("Loaded agent.");
-
-const input = `What views display account balances?`;
-
-console.log(`Executing with input "${input}"...`);
-
-const result = await executor.call({ input });
-
+console.log(`Executing with input "${question}"...`);
+const result = await executor.call({ input: question });
 console.log(`Got output ${result.output}`);
