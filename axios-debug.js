@@ -11,7 +11,7 @@ export function setupAxiosDebugging (axios) {
         break;
       }
       default: {
-        console.log(`<--`, model, input.map(i => `${i.slice(0,100)}...`), Reflect.ownKeys(rest).join(', '))
+        console.log(`<--`, model, input, Reflect.ownKeys(rest).join(', '))
         break;
       }
     }
@@ -32,7 +32,7 @@ export function setupAxiosDebugging (axios) {
   }, function (error) {
     // Any status codes that falls outside the range of 2xx cause this function to trigger
     // Do something with response error
-    console.log(`--> (err)`, error.toJSON())
+    console.log(`--> (err)`, error.toJSON && error.toJSON() || error)
     return Promise.reject(error);
   });
 

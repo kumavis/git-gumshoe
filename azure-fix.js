@@ -26,6 +26,3 @@ export function fixForAzure ({ apiKey, apiVersion, configuration, axios }) {
     })
   }
 }
-
-// api-version=2022-12-01
-// The maximum length of input text for our embedding models is 2048 tokens 

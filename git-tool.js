@@ -29,7 +29,8 @@ export class GitTool extends DynamicTool {
       return `Error: "${input}" is not a valid git command`;
     }
     console.log(`git command input: "${input}"`)
-    const args = input.slice(startIndex + 3).trim().split(' ');
+    const commandArgString = input.slice(startIndex + 3).trim();
+    const args = parseCommandArgs(commandArgString);
     let stdout, stderr, didTruncate;
     try {
       ({ stdout, stderr, didTruncate } = await runGit(args, this.allowedCommands, this.targetDirectory, maxOutputLength));
@@ -50,6 +51,19 @@ export class GitTool extends DynamicTool {
   }
   
 }
+
+function parseCommandArgs(commandString) {
+  const regex = /(?:[^\s"']+|'[^']*'|"[^"]*")+/g;
+  const args = [];
+  let match;
+
+  while ((match = regex.exec(commandString)) !== null) {
+    args.push(match[0]);
+  }
+
+  return args;
+}
+
 
 async function runGit(args, allowedCommands, targetDirectory, maxOutputLength) {
   console.log('running git', args);

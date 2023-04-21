@@ -1,17 +1,12 @@
 import { config as loadEnvFile } from 'dotenv';
 import axios from 'axios';
 import { OpenAI } from "langchain/llms/openai";
-import { PromptTemplate } from 'langchain/prompts';
-import { RetrievalQAChain, loadSummarizationChain } from "langchain/chains";
 import { OpenAIEmbeddings } from "langchain/embeddings/openai";
-import { initializeAgentExecutorWithOptions } from "langchain/agents";
-// import { SerpAPI } from "langchain/tools";
 import { Calculator } from "langchain/tools/calculator";
 import { VectorStoreQATool } from "langchain/tools";
+import { AgentExecutor, ZeroShotAgent, ZeroShotAgentOutputParser } from "langchain/agents";
+
 import { fixForAzure } from './azure-fix.js';
-import { setupAxiosDebugging } from './axios-debug.js';
-import { getAllCommits, gitShow } from './util.js';
-import { iterate, parallelMapToQueue } from './gtor.js';
 import { loadAndProcessDocuments, vectorStoreFromDocuments } from './documentProcessor.js';
 import { GitTool } from './git-tool.js';
 
@@ -41,7 +36,7 @@ if (apiType === 'azure') {
   fixForAzure({ configuration: openAiConfiguration, axios, apiKey, apiVersion });
 }
 
-setupAxiosDebugging(axios);
+// setupAxiosDebugging(axios);
 
 const model = new OpenAI(openAiParams, openAiConfiguration);
 const embeddings = new OpenAIEmbeddings(openAiParams, openAiConfiguration);
@@ -69,8 +64,31 @@ const tools = [
   new GitTool({ targetDirectory }),
 ];
 
-const executor = await initializeAgentExecutorWithOptions(tools, model, {
-  agentType: "zero-shot-react-description",
+// https://github.com/hwchase17/langchainjs/issues/920
+class FixedOutputParser extends ZeroShotAgentOutputParser {
+  async parse(text) {
+    const result = await super.parse(text);
+    // completed? return
+    if (result.returnValues) {
+      return result;
+    }
+    // fix parsing
+    const match = /Action: (.*)\nAction Input: (.*)/s.exec(text);
+    if (!match) {
+      throw new Error(`Could not parse LLM output: ${text}`);
+    }
+    return {
+      tool: match[1].trim(),
+      toolInput: match[2].trim().replace(/\n/g, ""),
+      log: text,
+    };
+  }
+}
+
+const executor = AgentExecutor.fromAgentAndTools({
+  agent: ZeroShotAgent.fromLLMAndTools(model, tools, { outputParser: new FixedOutputParser() }),
+  tools,
+  returnIntermediateSteps: true,
   verbose: true,
 });
 
