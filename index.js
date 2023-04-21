@@ -5,11 +5,12 @@ import { OpenAIEmbeddings } from "langchain/embeddings/openai";
 import { HNSWLib } from "langchain/vectorstores/hnswlib";
 import { Calculator } from "langchain/tools/calculator";
 import { VectorStoreQATool } from "langchain/tools";
-import { AgentExecutor, ZeroShotAgent, ZeroShotAgentOutputParser } from "langchain/agents";
+import { AgentExecutor, ZeroShotAgent } from "langchain/agents";
 import { setupAxiosDebugging } from './axios-debug.js';
 import { fixForAzure } from './azure-fix.js';
 import { loadAndProcessDocuments, vectorStoreFromDocuments } from './documentProcessor.js';
 import { GitTool } from './git-tool.js';
+import { ZeroShotAgentOutputParser } from './src/ZeroShotAgentOutputParser.js';
 
 // parse command arguments
 const [,, ...cliArgs] = process.argv;
@@ -32,29 +33,32 @@ if (apiType === 'azure') {
   fixForAzure({ configuration: openAiConfiguration, axios, apiKey, apiVersion });
 }
 
-setupAxiosDebugging(axios);
+// setupAxiosDebugging(axios, true);
 
-const model = new OpenAI({ modelName: 'gpt-3.5-turbo', ...openAiParams }, openAiConfiguration);
 const embeddings = new OpenAIEmbeddings(openAiParams, openAiConfiguration);
 
 switch (command) {
   case 'ask':
+    const model = new OpenAI({ modelName: 'gpt-3.5-turbo', ...openAiParams }, openAiConfiguration);
     await ask({ model, embeddings, commandArgs });
     break;
+  case 'ask3':
+    await askThree({ embeddings, commandArgs });
+    break;
   case 'index':
-    await index({ model, embeddings, commandArgs });
+    await index({ embeddings, commandArgs });
     break;
   default:
     throw new Error(`Unknown command ${command}`);
 }
 
-async function index({ model, embeddings, commandArgs }) {
+async function index({ embeddings, commandArgs, log = console.log }) {
   const [targetDirectory] = commandArgs;
   if (!targetDirectory) {
     throw new Error('Please provide a target directory as the first argument');
   }
 
-  console.log("Loading docs...");
+  log("Loading docs...");
   const docs = await loadAndProcessDocuments(targetDirectory, {
     // recursive: true,
     metadataText: 'application source code',
@@ -64,7 +68,22 @@ async function index({ model, embeddings, commandArgs }) {
   await vectorStore.save('./.vectorstore');
 }
 
-async function ask({ model, embeddings, commandArgs }) {
+async function askThree({ embeddings, commandArgs, log = console.log }) {
+  const modelParams = { modelName: 'gpt-3.5-turbo', ...openAiParams };
+  const model1 = new OpenAI({ temperature: 0, ...modelParams }, openAiConfiguration);
+  const model2 = new OpenAI({ temperature: 0.5, ...modelParams }, openAiConfiguration);
+  const model3 = new OpenAI({ temperature: 1, ...modelParams }, openAiConfiguration);
+  const log1 = (...args) => log(`[1]:`, ...args);
+  const log2 = (...args) => log(`[2]:`, ...args);
+  const log3 = (...args) => log(`[3]:`, ...args);
+  await Promise.all([
+    ask({ model: model1, log: log1, embeddings, commandArgs }),
+    ask({ model: model2, log: log2, embeddings, commandArgs }),
+    ask({ model: model3, log: log3, embeddings, commandArgs }),
+  ]);
+}
+
+async function ask({ model, embeddings, commandArgs, log = console.log }) {
   const [targetDirectory, question] = commandArgs;
   if (!targetDirectory) {
     throw new Error('Please provide a target directory as the first argument');
@@ -73,7 +92,7 @@ async function ask({ model, embeddings, commandArgs }) {
     throw new Error('Please provide a question as the second argument');
   }
   
-  console.log("Loading vector store...");
+  log("Loading vector store...");
   const vectorStore = await HNSWLib.load(
     './.vectorstore',
     embeddings
@@ -95,36 +114,16 @@ async function ask({ model, embeddings, commandArgs }) {
     new GitTool({ targetDirectory }),
   ];
 
-  // https://github.com/hwchase17/langchainjs/issues/920
-  class FixedOutputParser extends ZeroShotAgentOutputParser {
-    async parse(text) {
-      const result = await super.parse(text);
-      // completed? return
-      if (result.returnValues) {
-        return result;
-      }
-      // fix parsing
-      const match = /Action: (.*)\nAction Input: (.*)/s.exec(text);
-      if (!match) {
-        throw new Error(`Could not parse LLM output: ${text}`);
-      }
-      return {
-        tool: match[1].trim(),
-        toolInput: match[2].trim().replace(/\n/g, ""),
-        log: text,
-      };
-    }
-  }
-
   const executor = AgentExecutor.fromAgentAndTools({
-    agent: ZeroShotAgent.fromLLMAndTools(model, tools, { outputParser: new FixedOutputParser() }),
+    agent: ZeroShotAgent.fromLLMAndTools(model, tools, { outputParser: new ZeroShotAgentOutputParser() }),
     tools,
     returnIntermediateSteps: true,
     verbose: true,
   });
 
-  console.log("Loaded agent.");
-  console.log(`Executing with input "${question}"...`);
+  log("Loaded agent.");
+  log(`Executing with input "${question}"...`);
   const result = await executor.call({ input: question });
-  console.log(`Got output ${result.output}`);
+  log(`Got output ${result.output}`);
+  return result;
 }
