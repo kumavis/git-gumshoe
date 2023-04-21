@@ -5,7 +5,7 @@ import { OpenAIEmbeddings } from "langchain/embeddings/openai";
 import { Calculator } from "langchain/tools/calculator";
 import { VectorStoreQATool } from "langchain/tools";
 import { AgentExecutor, ZeroShotAgent, ZeroShotAgentOutputParser } from "langchain/agents";
-
+import { setupAxiosDebugging } from './axios-debug.js';
 import { fixForAzure } from './azure-fix.js';
 import { loadAndProcessDocuments, vectorStoreFromDocuments } from './documentProcessor.js';
 import { GitTool } from './git-tool.js';
@@ -38,7 +38,7 @@ if (apiType === 'azure') {
 
 // setupAxiosDebugging(axios);
 
-const model = new OpenAI(openAiParams, openAiConfiguration);
+const model = new OpenAI({ modelName: 'gpt-3.5-turbo', ...openAiParams }, openAiConfiguration);
 const embeddings = new OpenAIEmbeddings(openAiParams, openAiConfiguration);
 
 console.log("Loading docs...");

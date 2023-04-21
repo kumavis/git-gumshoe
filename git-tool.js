@@ -3,14 +3,15 @@ import { DynamicTool } from 'langchain/tools';
 
 const defaultAllowedCommands = [
   'log',
-  'show-ref'
+  'show-ref',
+  'status',
 ]
 
 export class GitTool extends DynamicTool {
   constructor(fields = {}) {
     super({
       name: fields.name ?? 'git',
-      description: fields.description ?? 'Run git commands',
+      description: fields.description ?? 'Run a single git command. This is not a full shell and cannot run other commands or pipe. Example: git log',
     });
     this.func = fields.func ?? this._func.bind(this);
     this.targetDirectory = fields.targetDirectory;
