@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { DynamicTool } from 'langchain/tools';
 
+const defaultDescription = 'Run a single git command. This is NOT a full shell and you CANNOT run other commands or use a pipe. Example: git log';
+
 const defaultAllowedCommands = [
   'log',
   'shortlog',
@@ -13,7 +15,7 @@ export class GitTool extends DynamicTool {
   constructor(fields = {}) {
     super({
       name: fields.name ?? 'git',
-      description: fields.description ?? 'Run a single git command. This is not a full shell and cannot run other commands or pipe. Example: git log',
+      description: fields.description ?? defaultDescription,
     });
     this.func = fields.func ?? this._func.bind(this);
     this.targetDirectory = fields.targetDirectory;
@@ -26,19 +28,21 @@ export class GitTool extends DynamicTool {
 
   async _func (input) {
     const maxOutputLength = this.maxOutputLength;
-    const startIndex = input.indexOf('git')
-    if (startIndex === -1) {
-      // throw new Error('No git command found');
-      return `Error: "${input}" is not a valid git command`;
+    const [command] = input.trim().split(' ')
+    if (command !== 'git') {
+      return `Error: Must only run a git command, no other terminal commands are allowed. Example: git log`;
     }
     console.log(`git command input: "${input}"`)
-    const commandArgString = input.slice(startIndex + 3).trim();
+    const commandArgString = input.slice(command.length + 1).trim();
     const args = parseCommandArgs(commandArgString);
+    if (args.includes('|')) {
+      return `Error: Cannot pipe commands`;
+    }
     let stdout, stderr, didTruncate;
     try {
       ({ stdout, stderr, didTruncate } = await runGit(args, this.allowedCommands, this.targetDirectory, maxOutputLength));
     } catch (err) {
-      console.error('Error running git command:', err, stderr);
+      // console.error('Error running git command:', err, stderr);
       return `Error: ${err.message}\n${stderr}`;
     }
     if (didTruncate) {
@@ -72,7 +76,7 @@ async function runGit(args, allowedCommands, targetDirectory, maxOutputLength) {
   console.log('running git', args);
   const command = args.find((arg) => !arg.startsWith('-'));
   if (!allowedCommands.includes(command)) {
-    throw new Error(`Command ${command} is not allowed`);
+    throw new Error(`Command "${command}" is not allowed`);
   }
 
   return trackProcessUntilBufferIsFull(

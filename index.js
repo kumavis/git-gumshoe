@@ -40,10 +40,14 @@ const embeddings = new OpenAIEmbeddings(openAiParams, openAiConfiguration);
 switch (command) {
   case 'ask':
     const model = new OpenAI({ modelName: 'gpt-3.5-turbo', ...openAiParams }, openAiConfiguration);
-    await ask({ model, embeddings, commandArgs });
+    await ask({ model, embeddings, commandArgs, verbose: true });
     break;
-  case 'ask3':
-    await askThree({ embeddings, commandArgs });
+  case 'askMany':
+    await askMany({ count: 10, embeddings, commandArgs });
+    break;
+  case 'testTemperature':
+    // top-p: 0-1?
+    await testTemperature({ count: 10, maxTemp: 2, rounds: 50, embeddings, commandArgs });
     break;
   case 'index':
     await index({ embeddings, commandArgs });
@@ -68,22 +72,61 @@ async function index({ embeddings, commandArgs, log = console.log }) {
   await vectorStore.save('./.vectorstore');
 }
 
-async function askThree({ embeddings, commandArgs, log = console.log }) {
-  const modelParams = { modelName: 'gpt-3.5-turbo', ...openAiParams };
-  const model1 = new OpenAI({ temperature: 0, ...modelParams }, openAiConfiguration);
-  const model2 = new OpenAI({ temperature: 0.5, ...modelParams }, openAiConfiguration);
-  const model3 = new OpenAI({ temperature: 1, ...modelParams }, openAiConfiguration);
-  const log1 = (...args) => log(`[1]:`, ...args);
-  const log2 = (...args) => log(`[2]:`, ...args);
-  const log3 = (...args) => log(`[3]:`, ...args);
-  await Promise.all([
-    ask({ model: model1, log: log1, embeddings, commandArgs }),
-    ask({ model: model2, log: log2, embeddings, commandArgs }),
-    ask({ model: model3, log: log3, embeddings, commandArgs }),
-  ]);
+async function testTemperature({ count = 3, rounds = 5, minTemp = 0, maxTemp = 1, embeddings, vectorStore: _vectorStore, commandArgs, log = console.log }) {
+  const [_targetDirectory, _question, answer] = commandArgs;
+  if (!answer) {
+    throw new Error('Please provide a correct answer for the assessment');
+  }
+  const vectorStore = _vectorStore ?? await HNSWLib.load(
+    './.vectorstore',
+    embeddings
+  );
+  const agentScores = Array(count).fill(0);
+  // each round
+  await Promise.all(Array(rounds).fill().map(async () => {
+    // each agent session
+    const results = await askMany({ count, minTemp, maxTemp, embeddings, vectorStore, commandArgs, log });
+    results.forEach((result, index) => {
+      const { output } = result;
+      const correct = output && output.includes(answer);
+      if (correct) {
+        agentScores[index]++;
+      }
+    })
+  }))
+  agentScores.forEach((score, index) => {
+    const tempLabel = minTemp + (maxTemp - minTemp) * (index / (count - 1)).toFixed(1);
+    log(`[${index}] (${tempLabel}): ${score}/${rounds}`);
+  })
 }
 
-async function ask({ model, embeddings, commandArgs, log = console.log }) {
+async function askMany({ count = 3, minTemp = 0, maxTemp = 1, embeddings, vectorStore: _vectorStore, commandArgs, log = console.log }) {
+  const vectorStore = _vectorStore ?? await HNSWLib.load(
+    './.vectorstore',
+    embeddings
+  );
+  const modelParams = { modelName: 'gpt-3.5-turbo', ...openAiParams };
+  const agentParams = Array(count).fill().map((_, index) => {
+    const temperature = minTemp + (maxTemp - minTemp) * (index / (count - 1));
+    return { temperature };
+  });
+  const models = agentParams.map(params => new OpenAI({ ...params, ...modelParams }, openAiConfiguration));
+  const results = await Promise.all(models.map((model, index) => {
+    const log = (...args) => console.log(`[${index}]:`, ...args);
+    return ask({ model, log, embeddings, vectorStore, commandArgs }).catch(error => ({ error }));
+  }));
+  results.forEach((result, index) => {
+    const agentParam = agentParams[index];
+    const tempLabel = agentParam.temperature.toFixed(1);
+    const { output, error } = result;
+    const maxResultSize = 200;
+    const resultLabel = error ? `(error: ${error.message})` : output.length > maxResultSize ? `${output.slice(0, maxResultSize)} [...]` : output;
+    console.log(`[${index}] (${tempLabel}): ${resultLabel}`);
+  });
+  return results;
+}
+
+async function ask({ model, embeddings, commandArgs, vectorStore: _vectorStore, log = console.log, verbose = false }) {
   const [targetDirectory, question] = commandArgs;
   if (!targetDirectory) {
     throw new Error('Please provide a target directory as the first argument');
@@ -92,8 +135,8 @@ async function ask({ model, embeddings, commandArgs, log = console.log }) {
     throw new Error('Please provide a question as the second argument');
   }
   
-  log("Loading vector store...");
-  const vectorStore = await HNSWLib.load(
+  // log("Loading vector store...");
+  const vectorStore = _vectorStore ?? await HNSWLib.load(
     './.vectorstore',
     embeddings
   );
@@ -118,12 +161,11 @@ async function ask({ model, embeddings, commandArgs, log = console.log }) {
     agent: ZeroShotAgent.fromLLMAndTools(model, tools, { outputParser: new ZeroShotAgentOutputParser() }),
     tools,
     returnIntermediateSteps: true,
-    verbose: true,
+    verbose,
   });
 
-  log("Loaded agent.");
-  log(`Executing with input "${question}"...`);
+  log(`Loaded agent. Executing with input "${question}"...`);
   const result = await executor.call({ input: question });
-  log(`Got output ${result.output}`);
+
   return result;
 }
